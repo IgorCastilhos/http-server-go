@@ -10,7 +10,7 @@ func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	// Construct the HTTP response
-	response := "HTTP/1.1 200 OK\\r\\n\\r\\n"
+	response := "HTTP/1.1 200 OK\r\n\r\n"
 
 	// Write the response to the connection
 	_, err := conn.Write([]byte(response))
