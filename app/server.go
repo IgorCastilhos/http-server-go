@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -30,7 +33,7 @@ func handleConnection(conn net.Conn) {
 	requestLine := lines[0]
 	parts := strings.Split(requestLine, " ")
 	method := parts[0]
-	path := parts[1]
+	path := strings.Split(lines[0], " ")[1]
 
 	userAgent := ""
 	for _, line := range lines[1:] {
@@ -85,13 +88,24 @@ func handleConnection(conn net.Conn) {
 	} else if strings.HasPrefix(path, "/echo/") {
 		echoStr := path[len("/echo/"):]
 
-		responseBody := echoStr
-		contentLength := len(responseBody)
+		var compressedData bytes.Buffer
+		gz := gzip.NewWriter(&compressedData)
+		_, err := gz.Write([]byte(echoStr))
+		if err != nil {
+			fmt.Println("Error writing to gzip writer: ", err)
+			return
+		}
+		err = gz.Close()
+		if err != nil {
+			fmt.Println("Error closing gzip writer: ", err)
+			return
+		}
 
 		if gzipSupported {
-			response = fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Encoding: gzip\r\nContent-Length: %d\r\n\r\n%s", contentLength, responseBody)
+			conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n", compressedData.Len())))
+			io.Copy(conn, &compressedData)
 		} else {
-			response = fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", contentLength, responseBody)
+			conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(echoStr), echoStr)))
 		}
 
 	} else if path == "/index.html" || path == "/" {
