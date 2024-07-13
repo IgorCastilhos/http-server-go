@@ -1,13 +1,23 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"strings"
 )
 
+var (
+	// Limit the number of concurrent connections
+	maxConnections = 5
+	semaphore      = make(chan struct{}, maxConnections)
+	filesDirectory string
+)
+
 func handleConnection(conn net.Conn) {
+
 	defer conn.Close()
 
 	// Read the request
@@ -17,6 +27,7 @@ func handleConnection(conn net.Conn) {
 		fmt.Println("Error reading from connection: ", err)
 		return
 	}
+
 	request := string(buffer[:n])
 
 	// Split request into lines
@@ -41,7 +52,23 @@ func handleConnection(conn net.Conn) {
 	}
 
 	// Check the path
-	if path == "/user-agent" && userAgent != "" {
+	if strings.HasPrefix(path, "/files/") {
+		filename := path[len("/files/"):]
+
+		filePath := filesDirectory + "/" + filename // Combine the directory path with the filename
+		fileContents, err := ioutil.ReadFile(filePath)
+
+		if err != nil {
+			// File does not exist
+			conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+			return
+		}
+
+		// File exists, serve it
+		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n", len(fileContents))))
+		conn.Write(fileContents)
+	} else if path == "/user-agent" && userAgent != "" {
+
 		// Prepare the response body
 		responseBody := userAgent
 		// Calculate the Content-Length
@@ -70,11 +97,20 @@ func handleConnection(conn net.Conn) {
 	_, err = conn.Write([]byte(response))
 	if err != nil {
 		fmt.Println("Error writing to connection: ", err)
-		return
 	}
+	<-semaphore
 }
 
 func main() {
+	// Parse the --directory flag
+	flag.StringVar(&filesDirectory, "directory", ".", "the directory to serve files from")
+	flag.Parse()
+
+	// Ensure the directory flag is set
+	if filesDirectory == "" {
+		fmt.Println("Please provide the directory to serve files from using the -directory flag")
+		os.Exit(1)
+	}
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
@@ -92,6 +128,9 @@ func main() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			continue
 		}
+		// Acquire a semaphore before handling the connection
+		semaphore <- struct{}{}
+
 		go handleConnection(conn)
 	}
 }
