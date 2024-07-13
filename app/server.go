@@ -1,23 +1,5 @@
 package main
 
-/*
-	This code extracts the URL path from an HTTP request,
-	and responds with either a 200 or 404.
-	1. Read the incoming data from the connection to get the
-	HTTP request as a string.
-	2. Split the request string by CRLF (\r\n) to separate
-	the request line, headers, and body.
-	3. Extract the request line (the first element of the
-	split result) and then split it by spaces to get the
-	method, path, and HTTP version.
-	4. Check the path to determine the response. If the path
-	matches a known route (e.g., /index.html), respond
-	with 200 OK. Otherwise, respond with 404 Not Found.
-	5. Construct the appropriate HTTP response based on
-	the path check.
-	6. Write the response back to the connection.
-*/
-
 import (
 	"fmt"
 	"net"
@@ -48,7 +30,20 @@ func handleConnection(conn net.Conn) {
 
 	// Determine the response based on the path
 	response := ""
-	if path == "/index.html" || path == "/" {
+
+	// Check if the path starts with /echo/
+	if strings.HasPrefix(path, "/echo/") {
+		// Extract the string after /echo/
+		echoStr := path[len("/echo/"):]
+
+		// Prepare the response body
+		responseBody := echoStr
+		// Calculate the Content-Length
+		contentLength := len(responseBody)
+
+		// Construct the response with Content-Type and Content-Length headers
+		response = fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", contentLength, responseBody)
+	} else if path == "/index.html" || path == "/" {
 		response = "HTTP/1.1 200 OK\r\n\r\n"
 	} else {
 		response = "HTTP/1.1 404 Not Found\r\n\r\n"
