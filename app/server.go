@@ -28,11 +28,28 @@ func handleConnection(conn net.Conn) {
 	// Extract the path
 	path := parts[1]
 
-	// Determine the response based on the path
+	// Initialize the response variable
 	response := ""
+	userAgent := ""
 
-	// Check if the path starts with /echo/
-	if strings.HasPrefix(path, "/echo/") {
+	// Loop through headers to find user-agent
+	for _, line := range lines[1:] {
+		if strings.HasPrefix(line, "User-Agent: ") {
+			userAgent = line[len("User-Agent: "):]
+			break
+		}
+	}
+
+	// Check the path
+	if path == "/user-agent" && userAgent != "" {
+		// Prepare the response body
+		responseBody := userAgent
+		// Calculate the Content-Length
+		contentLength := len(responseBody)
+
+		// Construct the response with Content-Type and Content-Length headers
+		response = fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", contentLength, responseBody)
+	} else if strings.HasPrefix(path, "/echo/") {
 		// Extract the string after /echo/
 		echoStr := path[len("/echo/"):]
 
