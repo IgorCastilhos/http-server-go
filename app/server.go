@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -21,7 +20,7 @@ func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	// Read the request
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, 4096)
 	n, err := conn.Read(buffer)
 	if err != nil {
 		fmt.Println("Error reading from connection: ", err)
@@ -29,21 +28,15 @@ func handleConnection(conn net.Conn) {
 	}
 
 	request := string(buffer[:n])
-
-	// Split request into lines
 	lines := strings.Split(request, "\r\n")
-	// Extract the request line
 	requestLine := lines[0]
-	// Split the request line into components
 	parts := strings.Split(requestLine, " ")
-	// Extract the path
+	method := parts[0]
 	path := parts[1]
 
-	// Initialize the response variable
 	response := ""
 	userAgent := ""
 
-	// Loop through headers to find user-agent
 	for _, line := range lines[1:] {
 		if strings.HasPrefix(line, "User-Agent: ") {
 			userAgent = line[len("User-Agent: "):]
@@ -51,22 +44,35 @@ func handleConnection(conn net.Conn) {
 		}
 	}
 
-	// Check the path
 	if strings.HasPrefix(path, "/files/") {
 		filename := path[len("/files/"):]
 
-		filePath := filesDirectory + "/" + filename // Combine the directory path with the filename
-		fileContents, err := ioutil.ReadFile(filePath)
+		if method == "POST" {
+			body := lines[len(lines)-1]
 
-		if err != nil {
-			// File does not exist
-			conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
-			return
+			filePath := filesDirectory + "/" + filename
+			err := os.WriteFile(filePath, []byte(body), 0644)
+			if err != nil {
+				conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n\r\n"))
+				return
+			}
+			conn.Write([]byte("HTTP/1.1 201 Created\r\n\r\n"))
+
+		} else if method == "GET" {
+
+			filePath := filesDirectory + "/" + filename // Combine the directory path with the filename
+			fileContents, err := os.ReadFile(filePath)
+
+			if err != nil {
+				// File does not exist
+				conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+				return
+			}
+
+			// File exists, serve it
+			conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n", len(fileContents))))
+			conn.Write(fileContents)
 		}
-
-		// File exists, serve it
-		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n", len(fileContents))))
-		conn.Write(fileContents)
 	} else if path == "/user-agent" && userAgent != "" {
 
 		// Prepare the response body
